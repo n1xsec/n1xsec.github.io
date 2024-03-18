@@ -1,7 +1,7 @@
 /*
 Click to enter JavaScript
 */
-
+javascript:[...Array(2**32-1)].map(_=>Math.ceil(Math.random()*111))
 var CTE = {};
 
 // The call back for when its finished
