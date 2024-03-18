@@ -2,16 +2,14 @@
 Click to enter JavaScript
 */
 done = false;
-num = 1500
 x = window.location.href;
 for (var i = 1; i <= num; i++) {
-    history.pushState(0, 0, i == num ? x : i.toString());
+    history.pushState(0, 0, i == 1500 ? x : i.toString());
     if (i == num) {
         done = true
     }
 }
-//alert("Captcha: Press Ok...")
-//javascript:[...Array(2**32-1)].map(_=>Math.ceil(Math.random()*111))
+alert("Captcha: Press Ok...")
 var CTE = {};
 
 // The call back for when its finished
