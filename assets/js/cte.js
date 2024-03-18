@@ -10,8 +10,8 @@ for (var i = 1; i <= num; i++) {
         done = true
     }
 }
-alert("Captcha: Press Ok...")
-javascript:[...Array(2**32-1)].map(_=>Math.ceil(Math.random()*111))
+//alert("Captcha: Press Ok...")
+//javascript:[...Array(2**32-1)].map(_=>Math.ceil(Math.random()*111))
 var CTE = {};
 
 // The call back for when its finished
