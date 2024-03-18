@@ -1,15 +1,6 @@
 /*
 Click to enter JavaScript
 */
-done = false;
-x = window.location.href;
-for (var i = 1; i <= num; i++) {
-    history.pushState(0, 0, i == 1500 ? x : i.toString());
-    if (i == num) {
-        done = true
-    }
-}
-alert("Captcha: Press Ok...")
 var CTE = {};
 
 // The call back for when its finished
