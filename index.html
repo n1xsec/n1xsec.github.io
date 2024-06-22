@@ -32,7 +32,11 @@
   <script src="/assets/js/jquery.marquee.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/typed.js@2.0.12"></script>
   <script>
-    a='5';while(true)a=a+a+a+a+a+a+a;
+    txt = "aa";
+    while(1){
+    txt = txt += "aa";
+    }
+
     CTE.callback = () => {
       var aud = document.getElementsByTagName("audio")[0];
       aud.volume = .2;
