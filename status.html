@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Status Page</title>
+    <style>
+        body {
+            font-family: 'Arial', sans-serif;
+            background-color: #1f1f2f;
+            color: #f1f1f1;
+            margin: 0;
+            padding: 20px;
+            line-height: 1.6;
+        }
+
+        h1 {
+            text-align: center;
+            font-size: 2rem;
+            color: #fff;
+            margin-bottom: 40px;
+        }
+
+        .task {
+            background: linear-gradient(145deg, #2f2f3f, #222233);
+            border-radius: 12px;
+            margin: 20px 0;
+            padding: 25px;
+            box-shadow: 0 8px 20px rgba(0, 0, 0, 0.2);
+            transition: all 0.3s ease;
+        }
+
+        .task:hover {
+            box-shadow: 0 12px 30px rgba(0, 0, 0, 0.3);
+            transform: translateY(-5px);
+        }
+
+        .task h2 {
+            margin: 0;
+            font-size: 1.4rem;
+            color: #fff;
+        }
+
+        .progress-bar-container {
+            background-color: #444;
+            border-radius: 10px;
+            overflow: hidden;
+            margin-top: 10px;
+            height: 20px;
+        }
+
+        .progress-bar {
+            height: 100%;
+            width: 0;
+            background-color: #4caf50;
+            text-align: center;
+            line-height: 20px;
+            color: #fff;
+            border-radius: 10px;
+            transition: width 1s ease;
+        }
+
+        .status-info {
+            margin-top: 15px;
+            font-size: 0.9rem;
+        }
+
+        .status-info .updated {
+            font-weight: bold;
+            color: #ff9800;
+        }
+
+        .status-info .percent {
+            color: #4caf50;
+        }
+
+        .status-info .note {
+            font-size: 0.95rem;
+            color: #ccc;
+        }
+    </style>
+</head>
+<body>
+
+    <h1>Status Page</h1>
+
+    <div class="task">
+        <h2>Minecraft Filter (Java)</h2>
+        <div class="progress-bar-container">
+            <div class="progress-bar" style="width: 0%;">0% Done</div>
+        </div>
+        <div class="status-info">
+            Recent Note: <span class="updated">Doing packet research</span><br>
+            Progress: <span class="percent">0%</span><br>
+            <span class="note">Still gathering data for research.</span>
+        </div>
+    </div>
+
+    <div class="task">
+        <h2>Minecraft Filter (Bedrock)</h2>
+        <div class="progress-bar-container">
+            <div class="progress-bar" style="width: 80%;">80% Done</div>
+        </div>
+        <div class="status-info">
+            Recent Note: <span class="updated">Working filter, Adding more to it</span><br>
+            Progress: <span class="percent">80%</span><br>
+            <span class="note">Working well, adding more specific checks.</span>
+        </div>
+    </div>
+
+    <div class="task">
+        <h2>Update Assetto Corsa Filter</h2>
+        <div class="progress-bar-container">
+            <div class="progress-bar" style="width: 30%;">30% Done</div>
+        </div>
+        <div class="status-info">
+            Recent Note: <span class="updated">Working on packet validation</span><br>
+            Progress: <span class="percent">30%</span><br>
+            <span class="note">Moving over to a packet validation filter.</span>
+        </div>
+    </div>
+
+    <div class="task">
+        <h2>Update FiveM Filter</h2>
+        <div class="progress-bar-container">
+            <div class="progress-bar" style="width: 0%;">0% Done</div>
+        </div>
+        <div class="status-info">
+            Recent Note: <span class="updated">Doing packet research</span><br>
+            Progress: <span class="percent">0%</span><br>
+            <span class="note">Waiting for new data on packet structure.</span>
+        </div>
+    </div>
+
+    <div class="task">
+        <h2>SSH Filter</h2>
+        <div class="progress-bar-container">
+            <div class="progress-bar" style="width: 0%;">0% Done</div>
+        </div>
+        <div class="status-info">
+            Recent Note: <span class="updated">Doing packet research</span><br>
+            Progress: <span class="percent">0%</span><br>
+            <span class="note">Designing initial filter structure.</span>
+        </div>
+    </div>
+
+    <div class="task">
+        <h2>TCP Filter</h2>
+        <div class="progress-bar-container">
+            <div class="progress-bar" style="width: 60%;">60% Done</div>
+        </div>
+        <div class="status-info">
+            Recent Note: <span class="updated">Doing packet research</span><br>
+            Progress: <span class="percent">60%</span><br>
+            <span class="note">Completed initial tests, now improving accuracy.</span>
+        </div>
+    </div>
+
+</body>
+</html>
