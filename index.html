@@ -112,6 +112,23 @@
       transform: scale(1.05);
       box-shadow: 0 0 40px #00f0ff;
     }
+
+    .typing-container {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      color: #ffffff;
+      font-size: 1.6em;
+      text-align: center;
+      text-shadow: 0 0 10px #ff00ff;
+      z-index: 2;
+    }
+
+    .typing-container span {
+      color: #00f0ff;
+      font-weight: bold;
+    }
   </style>
 </head>
 <body>
@@ -123,14 +140,32 @@
       <span>inori.lol</span>
     </div>
     <div class="navbar-center">
-      <a href="https://starlight.cx">Starlight</a>
+      <a href="#">Starlight</a>
     </div>
     <div class="navbar-right">
       <button class="get-started" onclick="alert('My discord is CLNQ, lowercase.\\nMy email is nix@starlight.cx');">Contact</button>
     </div>
   </div>
 
+  <div class="typing-container">
+    <span id="typed"></span>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/typed.js@2.0.12"></script>
   <script>
+    new Typed('#typed', {
+      strings: [
+        'Anti-DDoS Researcher',
+        "I've developed DPDK, XDP, and more filters",
+        'Experienced in Layer 3–7 mitigation',
+        'Obsessed with cats :3'
+      ],
+      typeSpeed: 50,
+      backSpeed: 25,
+      backDelay: 1500,
+      loop: true
+    });
+
     const canvas = document.getElementById('starCanvas');
     const ctx = canvas.getContext('2d');
     let stars = [];
