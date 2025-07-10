@@ -1,1 +1,189 @@
-Coming soon
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>inori.lol</title>
+  <style>
+    html, body {
+      margin: 0;
+      padding: 0;
+      overflow: hidden;
+      height: 100%;
+      background: radial-gradient(circle at center, #0a0020 0%, #000000 100%);
+      font-family: 'Segoe UI', sans-serif;
+    }
+
+    canvas {
+      position: absolute;
+      top: 0;
+      left: 0;
+      z-index: 0;
+    }
+
+    .navbar {
+      position: absolute;
+      top: 20px;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 80%;
+      height: 70px;
+      background: rgba(20, 0, 40, 0.7);
+      backdrop-filter: blur(10px);
+      border: 2px solid #7700ff;
+      box-shadow: 0 0 30px rgba(128, 0, 255, 0.6);
+      border-radius: 50px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 30px;
+      z-index: 2;
+      animation: fadeInDown 1s ease forwards;
+    }
+
+    @keyframes fadeInDown {
+      0% { transform: translate(-50%, -50px); opacity: 0; }
+      100% { transform: translate(-50%, 0); opacity: 1; }
+    }
+
+    .navbar-left, .navbar-center, .navbar-right {
+      display: flex;
+      align-items: center;
+    }
+
+    .navbar-left img {
+      width: 50px;
+      margin-right: 10px;
+      filter: drop-shadow(0 0 10px #ff00ff);
+      animation: float 3s ease-in-out infinite;
+    }
+
+    @keyframes float {
+      0%, 100% { transform: translateY(0); }
+      50% { transform: translateY(-5px); }
+    }
+
+    .navbar-left span {
+      color: #ffccff;
+      font-weight: bold;
+      font-size: 1.5em;
+      text-shadow: 0 0 15px #00f0ff;
+    }
+
+    .navbar-center a {
+      margin: 0 20px;
+      text-decoration: none;
+      color: #00f0ff;
+      font-weight: 600;
+      font-size: 1.1em;
+      position: relative;
+      transition: 0.3s;
+    }
+
+    .navbar-center a::after {
+      content: '';
+      position: absolute;
+      bottom: -5px;
+      left: 0;
+      width: 0%;
+      height: 2px;
+      background: #ff00ff;
+      transition: 0.3s;
+    }
+
+    .navbar-center a:hover::after {
+      width: 100%;
+    }
+
+    .get-started {
+      background: linear-gradient(45deg, #ff00ff, #00f0ff);
+      color: #ffffff;
+      border: none;
+      padding: 12px 28px;
+      border-radius: 30px;
+      font-weight: bold;
+      font-size: 1em;
+      cursor: pointer;
+      transition: 0.3s;
+      box-shadow: 0 0 20px #ff00ff;
+    }
+
+    .get-started:hover {
+      transform: scale(1.05);
+      box-shadow: 0 0 40px #00f0ff;
+    }
+  </style>
+</head>
+<body>
+  <canvas id="starCanvas"></canvas>
+
+  <div class="navbar">
+    <div class="navbar-left">
+      <img src="https://raw.githubusercontent.com/n1xsec/websiteassets/refs/heads/main/SLBlackPurplePinkTransparentp.png" alt="Logo">
+      <span>inori.lol</span>
+    </div>
+    <div class="navbar-center">
+      <a href="https://starlight.cx">Starlight</a>
+    </div>
+    <div class="navbar-right">
+      <button class="get-started" onclick="alert('My discord is CLNQ, lowercase.\\nMy email is nix@starlight.cx');">Contact</button>
+    </div>
+  </div>
+
+  <script>
+    const canvas = document.getElementById('starCanvas');
+    const ctx = canvas.getContext('2d');
+    let stars = [];
+    let mouse = {x: window.innerWidth/2, y: window.innerHeight/2};
+
+    function resize() {
+      canvas.width = window.innerWidth;
+      canvas.height = window.innerHeight;
+    }
+    window.addEventListener('resize', resize);
+    resize();
+
+    for (let i = 0; i < 300; i++) {
+      stars.push({
+        x: Math.random() * canvas.width,
+        y: Math.random() * canvas.height,
+        radius: Math.random() * 1.8 + 0.5,
+        speed: Math.random() * 0.3 + 0.1,
+        depth: Math.random() * 3
+      });
+    }
+
+    window.addEventListener('mousemove', e => {
+      mouse.x = e.clientX;
+      mouse.y = e.clientY;
+    });
+
+    function animate() {
+      ctx.fillStyle = '#000000';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      
+      stars.forEach(star => {
+        let dx = (mouse.x - canvas.width / 2) * star.depth * 0.005;
+        let dy = (mouse.y - canvas.height / 2) * star.depth * 0.005;
+        star.x += dx;
+        star.y += dy;
+
+        if (star.x > canvas.width) star.x = 0;
+        if (star.x < 0) star.x = canvas.width;
+        if (star.y > canvas.height) star.y = 0;
+        if (star.y < 0) star.y = canvas.height;
+
+        ctx.beginPath();
+        ctx.arc(star.x, star.y, star.radius, 0, 2 * Math.PI);
+        ctx.fillStyle = `rgba(255, ${Math.floor(Math.random()*255)}, 255, ${(4-star.depth)/4})`;
+        ctx.shadowColor = '#ff00ff';
+        ctx.shadowBlur = 10;
+        ctx.fill();
+      });
+      requestAnimationFrame(animate);
+    }
+
+    animate();
+  </script>
+</body>
+</html>
