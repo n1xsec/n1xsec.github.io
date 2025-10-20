@@ -25,12 +25,28 @@
       overflow: hidden;
     }
 
-    /* === Background Sky === */
+    /* === Animated Gradient Background === */
+    .bg-aurora {
+      position: fixed;
+      top: 0; left: 0; width: 100%; height: 100%;
+      background: linear-gradient(120deg, var(--accent-a), var(--accent-b), var(--accent-c));
+      background-size: 300% 300%;
+      filter: blur(100px) brightness(0.5);
+      animation: auroraFlow 15s ease-in-out infinite alternate;
+      opacity: 0.5;
+      z-index: 0;
+    }
+
+    @keyframes auroraFlow {
+      0% { background-position: 0% 50%; }
+      50% { background-position: 100% 50%; }
+      100% { background-position: 0% 50%; }
+    }
+
     canvas#sky {
       position: fixed;
-      top: 0; left: 0;
-      width: 100%; height: 100%;
-      z-index: 0;
+      top: 0; left: 0; width: 100%; height: 100%;
+      z-index: 1;
       pointer-events: none;
     }
 
@@ -160,6 +176,7 @@
   </style>
 </head>
 <body>
+  <div class="bg-aurora"></div>
   <canvas id="sky"></canvas>
   <main>
     <h1 class="brand">istria.dev</h1>
@@ -177,38 +194,36 @@
 
     const c = document.getElementById('sky');
     const ctx = c.getContext('2d');
-    let stars = [], mouse = {x:0, y:0};
+    let stars = [];
 
     function resize(){
       c.width = innerWidth;
       c.height = innerHeight;
-      stars = Array.from({length:200}, () => ({
+      stars = Array.from({length:180}, () => ({
         x: Math.random() * c.width,
         y: Math.random() * c.height,
-        r: Math.random() * 1.6 + 0.4,
-        dx: (Math.random() - 0.5) * 0.3,
-        dy: (Math.random() - 0.5) * 0.3,
-        hue: Math.random() * 360
+        r: Math.random() * 1.8 + 0.4,
+        dx: (Math.random() - 0.5) * 0.1,
+        dy: (Math.random() - 0.5) * 0.1,
+        hue: 200 + Math.random() * 160,
       }));
     }
-
     window.addEventListener('resize', resize);
-    window.addEventListener('mousemove', e => mouse = {x: e.clientX, y: e.clientY});
     resize();
 
     function animate(){
       ctx.clearRect(0,0,c.width,c.height);
       for(const s of stars){
         s.x += s.dx; s.y += s.dy;
-        if(s.x < 0 || s.x > c.width) s.dx *= -1;
-        if(s.y < 0 || s.y > c.height) s.dy *= -1;
-        const distX = (mouse.x - s.x) * 0.001;
-        const distY = (mouse.y - s.y) * 0.001;
-        s.x += distX; s.y += distY;
+        if(s.x < 0) s.x = c.width;
+        if(s.x > c.width) s.x = 0;
+        if(s.y < 0) s.y = c.height;
+        if(s.y > c.height) s.y = 0;
+
         ctx.beginPath();
-        const glow = Math.sin(Date.now()*0.002 + s.hue)*0.3 + 0.7;
-        ctx.fillStyle = `hsla(${s.hue}, 100%, 80%, ${glow})`;
-        ctx.arc(s.x, s.y, s.r, 0, Math.PI*2);
+        const alpha = 0.4 + Math.sin(Date.now() * 0.001 + s.x) * 0.3;
+        ctx.fillStyle = `hsla(${s.hue}, 100%, 80%, ${alpha})`;
+        ctx.arc(s.x, s.y, s.r, 0, Math.PI * 2);
         ctx.fill();
       }
       requestAnimationFrame(animate);
