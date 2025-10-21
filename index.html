@@ -167,6 +167,68 @@
       transform: translateY(-3px);
     }
 
+    /* === Showcase Modal === */
+    .showcase-overlay {
+      position: fixed;
+      top: 0; left: 0;
+      width: 100%; height: 100%;
+      background: rgba(5,5,10,0.8);
+      backdrop-filter: blur(14px);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 999;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.4s ease;
+    }
+
+    .showcase-overlay.active {
+      opacity: 1;
+      pointer-events: auto;
+    }
+
+    .showcase-modal {
+      position: relative;
+      background: rgba(15,15,25,0.6);
+      border: 1px solid rgba(255,255,255,0.15);
+      border-radius: 20px;
+      box-shadow: 0 0 40px rgba(255,46,151,0.25);
+      overflow: hidden;
+      width: 80%;
+      max-width: 900px;
+      aspect-ratio: 16 / 9;
+      animation: popIn 0.5s ease forwards;
+    }
+
+    @keyframes popIn {
+      from { transform: scale(0.9); opacity: 0; }
+      to { transform: scale(1); opacity: 1; }
+    }
+
+    .showcase-modal video {
+      width: 100%; height: 100%;
+      object-fit: cover;
+    }
+
+    .close-btn {
+      position: absolute;
+      top: 12px; right: 12px;
+      background: rgba(255,255,255,0.05);
+      border: 1px solid rgba(255,255,255,0.15);
+      color: var(--fg);
+      font-size: 16px;
+      padding: 6px 10px;
+      border-radius: 10px;
+      cursor: pointer;
+      transition: all 0.2s ease;
+    }
+
+    .close-btn:hover {
+      background: rgba(255,255,255,0.1);
+      box-shadow: 0 0 12px rgba(255,46,151,0.4);
+    }
+
     footer {
       color: var(--muted);
       margin-top: 40px;
@@ -178,6 +240,7 @@
 <body>
   <div class="bg-aurora"></div>
   <canvas id="sky"></canvas>
+
   <main>
     <h1 class="brand">istria.dev</h1>
     <div class="chip"><span class="dot"></span> free mode active</div>
@@ -185,9 +248,22 @@
     <div class="cta-row">
       <a class="cta primary" href="https://istria.wtf/istria-public.exe" download>Download Loader</a>
       <a class="cta secondary" href="https://discord.com/invite/CQPSA3TC8j" target="_blank" rel="noopener">Join Discord</a>
+      <a class="cta secondary" id="showcaseBtn" href="#">Showcase</a>
     </div>
     <footer>Build v1 • © <span id="year"></span> istria.dev</footer>
   </main>
+
+  <!-- Showcase Overlay -->
+  <div class="showcase-overlay" id="showcaseOverlay">
+    <div class="showcase-modal">
+      <button class="close-btn" id="closeShowcase">×</button>
+      <!-- Replace with your actual video link or MP4 -->
+      <video autoplay muted loop controls>
+        <source src="https://raw.githubusercontent.com/n1xsec/n1xsec.github.io/refs/heads/main/showcase.mp4" type="video/mp4">
+        Your browser does not support video playback.
+      </video>
+    </div>
+  </div>
 
   <script>
     document.getElementById('year').textContent = new Date().getFullYear();
@@ -229,6 +305,25 @@
       requestAnimationFrame(animate);
     }
     animate();
+
+    // Showcase video modal logic
+    const showcaseBtn = document.getElementById('showcaseBtn');
+    const showcaseOverlay = document.getElementById('showcaseOverlay');
+    const closeShowcase = document.getElementById('closeShowcase');
+
+    showcaseBtn.addEventListener('click', e => {
+      e.preventDefault();
+      showcaseOverlay.classList.add('active');
+    });
+
+    closeShowcase.addEventListener('click', () => {
+      showcaseOverlay.classList.remove('active');
+    });
+
+    showcaseOverlay.addEventListener('click', e => {
+      if(e.target === showcaseOverlay)
+        showcaseOverlay.classList.remove('active');
+    });
   </script>
 </body>
 </html>
