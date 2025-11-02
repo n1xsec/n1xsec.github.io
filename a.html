@@ -5,83 +5,48 @@
     </head>
     <h1>dont get raped young bull</h1>
     <script>/* ========================================================================
-   istria.dev - AntiMonkey v1.0
-   A multi-heuristic userscript/extension (Tampermonkey/Violentmonkey/Greasemonkey)
-   detector for web apps and anticheat-style integrity checks.
-
-   - 15+ detection methods (extension resource probes, DOM/CSS scans,
-     hook/native-code checks, mutation baits, stack trace probes, etc.)
-   - Aggregates findings into a single confidence score (0..100)
-   - Event/callback system for live updates
-   - Periodic re-scan with jitter to catch late injections
-   - Pure vanilla JS; no external deps
-
-   NOTE: No single heuristic is definitive. This aggregates weak signals
-   into a practical confidence score you can act on.
+   istria.dev - AntiMonkey v1.1 (with fresh-realm anti-masking + debug)
+   - Adds 3 new anti-masking checks:
+       1) freshToStringMismatch   (cross-realm Function#toString)
+       2) crossRealmConsoleProbe  (fresh realm examines page's console.log)
+       3) descriptorWeirdness     (descriptor sanity for console methods)
+   - Expanded debug logger: per-test evidence, console groups + tables.
+   - Same public API: AntiMonkey.start({ onDetect, onScore, debug, ... })
+   - Auto-start at the bottom (set debug as you like).
    ======================================================================== */
 
 (() => {
   "use strict";
 
-  // Small utilities
-  const now = () => performance && performance.now ? performance.now() : Date.now();
-  const sleep = (ms) => new Promise(res => setTimeout(res, ms));
+  const now = () => (typeof performance !== "undefined" && performance.now) ? performance.now() : Date.now();
+  const sleep = (ms) => new Promise(r => setTimeout(r, ms));
   const rand = (a, b) => Math.floor(Math.random() * (b - a + 1)) + a;
-  const clamp = (v, min, max) => Math.min(max, Math.max(min, v));
-  const isFn = (f) => typeof f === "function";
+  const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
+  const isFn = (x) => typeof x === "function";
   const NATIVE_RX = /\[native code\]/i;
 
-  // Known extension IDs and common resource paths
+  // Known extension IDs (kept from v1.0; Firefox handled via moz-extension marker)
   const KNOWN_IDS = {
     chrome: {
-      tampermonkey: [
-        // Chrome Web Store ID (stable)
-        "dhdgffkkebhmkfjojejmpbldmpobfkfo"
-      ],
-      violentmonkey: [
-        // Violentmonkey Web Store ID
-        "jinjaccalgkegednnccohejagnlnfdag"
-      ],
-      // other managers can be extended here
+      tampermonkey: ["dhdgffkkebhmkfjojejmpbldmpobfkfo"],
+      violentmonkey: ["jinjaccalgkegednnccohejagnlnfdag"]
     },
     edge: {
-      tampermonkey: [
-        // Microsoft Edge Add-ons ID
-        "iikmkjmpaadaobahmlepeloendndfphd"
-      ],
-      violentmonkey: [
-        // Edge store often mirrors Chrome ID, but keep separate list
-        "eeagobfjdenkkddmbclomhiblgggliao"
-      ],
+      tampermonkey: ["iikmkjmpaadaobahmlepeloendndfphd"],
+      violentmonkey: ["eeagobfjdenkkddmbclomhiblgggliao"]
     },
     opera: {
-      tampermonkey: [
-        // Opera may reuse Edge ID, add both known possibilities
-        "iikmkjmpaadaobahmlepeloendndfphd",
-        "dhdgffkkebhmkfjojejmpbldmpobfkfo"
-      ],
-      violentmonkey: [
-        "jinjaccalgkegednnccohejagnlnfdag"
-      ],
+      tampermonkey: ["iikmkjmpaadaobahmlepeloendndfphd","dhdgffkkebhmkfjojejmpbldmpobfkfo"],
+      violentmonkey: ["jinjaccalgkegednnccohejagnlnfdag"]
     },
-    // Firefox uses moz-extension:// randomized UUIDs; handled separately
-    firefox: {
-      greasemonkey: ["moz-extension"], // marker only
-      tampermonkey: ["moz-extension"], // marker only
-      violentmonkey: ["moz-extension"] // marker only
-    }
+    firefox: { tampermonkey:["moz-extension"], violentmonkey:["moz-extension"], greasemonkey:["moz-extension"] }
   };
 
   const EXT_RESOURCES = [
-    "/images/icon128.png",
-    "/icons/icon128.png",
-    "/assets/icon128.png",
-    "/manifest.json",
-    "/assets/logo.png",
-    "/images/icon48.png"
+    "/images/icon128.png","/icons/icon128.png","/assets/icon128.png","/images/icon48.png","/assets/logo.png","/manifest.json"
   ];
 
-  // Scoring weights per test (tuneable)
+  // Weights (bumped console + added the 3 new ones)
   const DEFAULT_WEIGHTS = {
     probeExtensionImage: 12,
     probeExtensionStylesheet: 10,
@@ -91,57 +56,40 @@
     detectXHRHook: 6,
     detectFetchHook: 6,
     detectWebSocketHook: 4,
-    detectConsoleHook: 2,
+    detectConsoleHook: 8,           // was 2; give it real impact
     detectToStringTamper: 6,
     mutationScriptTrap: 5,
     baitAdRemovalTrap: 5,
     timingAnomaly: 3,
     checkWindowProps: 6,
     stackMozExtensionLeak: 10,
-    detectExtensionIframes: 8
+    detectExtensionIframes: 8,
+
+    // NEW
+    freshToStringMismatch: 18,
+    crossRealmConsoleProbe: 16,
+    descriptorWeirdness: 8
   };
 
-  // Helper to check if a function looks native
-  function looksNative(fn) {
+  const looksNative = (fn) => {
     try {
       if (!isFn(fn)) return false;
       const s = Function.prototype.toString.call(fn);
       return NATIVE_RX.test(s);
-    } catch {
-      return false;
-    }
-  }
+    } catch { return false; }
+  };
 
-  // Helper to safely get property descriptor
-  function safeDesc(obj, key) {
-    try { return Object.getOwnPropertyDescriptor(obj, key) || null; }
-    catch { return null; }
-  }
-
-  // Helper: try create and append element
-  function appendHidden(el) {
+  const safeDesc = (obj, k) => { try { return Object.getOwnPropertyDescriptor(obj, k) || null; } catch { return null; } };
+  const appendHidden = (el) => {
     try {
-      el.style.position = "absolute";
-      el.style.left = "-99999px";
-      el.style.top = "-99999px";
-      el.style.width = "1px";
-      el.style.height = "1px";
-      el.style.opacity = "0";
-      el.style.pointerEvents = "none";
+      el.style.cssText = "position:absolute;left:-99999px;top:-99999px;width:1px;height:1px;opacity:0;pointer-events:none;";
       (document.body || document.documentElement).appendChild(el);
       return true;
-    } catch {
-      return false;
-    }
-  }
+    } catch { return false; }
+  };
 
-  // Core class
   class AntiMonkey {
-    static start(opts = {}) {
-      const instance = new AntiMonkey(opts);
-      instance.init();
-      return instance;
-    }
+    static start(opts = {}) { const inst = new AntiMonkey(opts); inst.init(); return inst; }
 
     constructor(opts = {}) {
       this.opts = {
@@ -152,143 +100,79 @@
         runOnReadyState: opts.runOnReadyState || "interactive",
         onDetect: isFn(opts.onDetect) ? opts.onDetect : null,
         onScore: isFn(opts.onScore) ? opts.onScore : null,
-        maxLog: opts.maxLog || 200,
-        debug: !!opts.debug
+        maxLog: opts.maxLog || 500,
+        debug: !!opts.debug,
+        threshold: typeof opts.threshold === "number" ? opts.threshold : 35
       };
-
       this.log = [];
-      this.listeners = new Set();
       this.findings = [];
-      this.timer = null;
-      this.destroyed = false;
+      this.listeners = new Set();
+      this.timer = null; this.destroyed = false;
 
-      // Baits / observers
-      this._mo = null;
-      this._bait = null;
-      this._adBait = null;
+      // traps/baits
+      this._mo = null; this._bait = null; this._adBait = null;
+      this._lastPayload = null;
     }
 
     init() {
-      const ready = () => {
-        this._info("init: DOM ready");
-        this.runAll().then(() => {
-          if (this.opts.continuous) this._loop();
-        });
-      };
-
-      const state = document.readyState;
-      if (state === "complete" || state === "interactive") {
-        ready();
-      } else {
+      const go = async () => { this._dinfo("init: DOM ready"); await this.runAll(); if (this.opts.continuous) this._loop(); };
+      const s = document.readyState;
+      (s === "complete" || s === "interactive") ? go() :
         document.addEventListener("readystatechange", () => {
-          if (document.readyState === this.opts.runOnReadyState) ready();
+          if (document.readyState === this.opts.runOnReadyState) go();
         }, { once: true });
-      }
     }
 
-    destroy() {
-      this.destroyed = true;
-      if (this.timer) clearTimeout(this.timer);
-      this.timer = null;
-      try {
-        if (this._mo) this._mo.disconnect();
-      } catch {}
-      try {
-        if (this._bait && this._bait.parentNode) this._bait.parentNode.removeChild(this._bait);
-      } catch {}
-      try {
-        if (this._adBait && this._adBait.parentNode) this._adBait.parentNode.removeChild(this._adBait);
-      } catch {}
-    }
+    destroy() { this.destroyed = true; if (this.timer) clearTimeout(this.timer); try { this._mo?.disconnect(); } catch{} }
 
-    on(listener) {
-      if (isFn(listener)) this.listeners.add(listener);
-      return () => this.listeners.delete(listener);
-    }
-
-    _emit(payload) {
-      for (const l of this.listeners) {
-        try { l(payload); } catch {}
-      }
-      if (this.opts.onScore && typeof payload.score === "number") {
-        try { this.opts.onScore(payload); } catch {}
-      }
-      if (this.opts.onDetect && payload.suspected) {
-        try { this.opts.onDetect(payload); } catch {}
-      }
-    }
+    on(fn) { if (isFn(fn)) this.listeners.add(fn); return () => this.listeners.delete(fn); }
+    _emit(p) { this._lastPayload = p; for (const l of this.listeners) try { l(p); } catch{} if (this.opts.onScore) try { this.opts.onScore(p);}catch{} if (p.suspected && this.opts.onDetect) try { this.opts.onDetect(p);}catch{} }
+    lastReport(){ return this._lastPayload; }
 
     _loop() {
       if (this.destroyed) return;
       const ms = rand(this.opts.intervalMinMs, this.opts.intervalMaxMs);
-      this._debug(`next scan in ${ms}ms`);
-      this.timer = setTimeout(async () => {
-        await this.runAll();
-        this._loop();
-      }, ms);
+      this._dinfo(`next scan in ${ms}ms`);
+      this.timer = setTimeout(async () => { await this.runAll(); this._loop(); }, ms);
     }
 
-    // Logging
-    _log(level, msg, extra) {
-      const entry = {
-        t: Date.now(),
-        level,
-        msg,
-        extra: extra || null
-      };
-      this.log.push(entry);
-      if (this.log.length > this.opts.maxLog) this.log.shift();
+    _l(level, msg, extra) {
+      const e = { t: Date.now(), level, msg, extra: extra ?? null };
+      this.log.push(e); if (this.log.length > this.opts.maxLog) this.log.shift();
       if (this.opts.debug) {
-        const tag = `[AntiMonkey:${level}]`;
-        try { console[level === "error" ? "error" : (level === "warn" ? "warn" : "log")](tag, msg, extra || ""); }
-        catch {}
+        const tag = `%c[AntiMonkey:${level}]`;
+        const style = level === "error" ? "color:#ff5252" : level === "warn" ? "color:#ffb54c" : level === "debug" ? "color:#8ab4f8" : "color:#9be29b";
+        try { console.log(tag, style, msg, extra ?? ""); } catch {}
       }
     }
-    _info(msg, extra) { this._log("info", msg, extra); }
-    _warn(msg, extra) { this._log("warn", msg, extra); }
-    _error(msg, extra) { this._log("error", msg, extra); }
-    _debug(msg, extra) { /* toggle with opts.debug */ if (this.opts.debug) this._log("debug", msg, extra); }
+    _dinfo(m,x){ this._l("info",m,x); }
+    _dwarn(m,x){ this._l("warn",m,x); }
+    _derr(m,x){ this._l("error",m,x); }
+    _d(m,x){ this._l("debug",m,x); }
 
-    // Finding collector
     _addFinding(id, passed, evidence, weightKey) {
       const weight = this.opts.weights[weightKey] || 0;
-      const score = passed ? weight : 0;
-      const f = {
-        id,
-        weightKey,
-        weight,
-        passed,
-        score,
-        ts: Date.now(),
-        evidence
-      };
+      const f = { id, weightKey, weight, passed: !!passed, score: passed ? weight : 0, ts: Date.now(), evidence };
       this.findings.push(f);
+      if (this.opts.debug) this._debugPrintFinding(f);
       return f;
     }
 
     _aggregate() {
-      // Aggregate newest finding per id
       const latest = new Map();
-      for (let i = this.findings.length - 1; i >= 0; i--) {
-        const f = this.findings[i];
-        if (!latest.has(f.id)) latest.set(f.id, f);
-      }
+      for (let i = this.findings.length - 1; i >= 0; i--) if (!latest.has(this.findings[i].id)) latest.set(this.findings[i].id, this.findings[i]);
       const items = Array.from(latest.values());
-      const totalWeight = items.reduce((a, b) => a + b.weight, 0) || 1;
-      const gained = items.reduce((a, b) => a + (b.passed ? b.weight : 0), 0);
-      const confidence = clamp(Math.round(100 * (gained / totalWeight)), 0, 100);
-      return { items, score: confidence, suspected: confidence >= 35 }; // threshold tuneable
+      const total = items.reduce((a,b)=>a+b.weight,0)||1;
+      const gained = items.reduce((a,b)=>a+(b.passed?b.weight:0),0);
+      const score = clamp(Math.round(100*(gained/total)),0,100);
+      const suspected = score >= this.opts.threshold;
+      return { items, score, suspected, gained, total };
     }
 
     async runAll() {
       const t0 = now();
-      const results = [];
+      this._prepareMutationBait(); this._prepareAdBait();
 
-      // Prepare baits/observers on first run
-      this._prepareMutationBait();
-      this._prepareAdBait();
-
-      // Run tests (some async in parallel)
       const tasks = [
         this._probeExtensionImage(),
         this._probeExtensionStylesheet(),
@@ -305,445 +189,353 @@
         this._timingAnomalyCheck(),
         this._checkWindowProps(),
         this._stackMozExtensionLeak(),
-        this._detectExtensionIframes()
+        this._detectExtensionIframes(),
+
+        // NEW anti-masking
+        this._freshToStringMismatch(),
+        this._crossRealmConsoleProbe(),
+        this._descriptorWeirdness()
       ];
 
       const settled = await Promise.allSettled(tasks);
-      for (const s of settled) {
-        if (s.status === "fulfilled" && s.value) results.push(...(Array.isArray(s.value) ? s.value : [s.value]));
-      }
+      const res = [];
+      for (const s of settled) if (s.status === "fulfilled" && s.value) res.push(...(Array.isArray(s.value)?s.value:[s.value]));
 
       const agg = this._aggregate();
       const dt = Math.max(1, Math.round(now() - t0));
+      const payload = { score: agg.score, suspected: agg.suspected, findings: agg.items, gained: agg.gained, total: agg.total, durationMs: dt, timestamp: Date.now() };
 
-      const payload = {
-        score: agg.score,
-        suspected: agg.suspected,
-        findings: agg.items,
-        durationMs: dt,
-        timestamp: Date.now()
-      };
-
-      this._info(`scan complete in ${dt}ms, score=${agg.score}, suspected=${agg.suspected}`);
+      this._debugReport(payload);
       this._emit(payload);
       return payload;
     }
 
-    // ---------------------------
-    // Heuristic #1: Image ping against known extension URLs
-    // ---------------------------
-    async _probeExtensionImage() {
-      const evid = [];
-      const hits = [];
+    // ----------------------------------------------------------------
+    // Debug pretty printing
+    // ----------------------------------------------------------------
+    _debugPrintFinding(f) {
+      try {
+        const icon = f.passed ? "🟥" : "⬜";
+        const hdr = `${icon} ${f.id}  (+${f.passed ? f.weight : 0}/${f.weight})`;
+        console.groupCollapsed(`%c${hdr}`, f.passed ? "color:#ff7675" : "color:#8ab4f8");
+        console.log("weightKey:", f.weightKey, "passed:", f.passed, "weight:", f.weight, "score:", f.score, "ts:", new Date(f.ts).toISOString());
+        if (f.evidence && typeof f.evidence === "object") {
+          try { console.table(f.evidence); } catch { console.log(f.evidence); }
+        } else {
+          console.log(f.evidence);
+        }
+        console.groupEnd();
+      } catch {}
+    }
 
+    _debugReport(payload) {
+      if (!this.opts.debug) return;
+      try {
+        const color = payload.suspected ? "background:#2b090b;color:#ffb3b3;padding:2px 6px;border-radius:6px" : "background:#0c2a12;color:#a3f2b6;padding:2px 6px;border-radius:6px";
+        console.group(`%cAntiMonkey scan: score=${payload.score} suspected=${payload.suspected} (${payload.gained}/${payload.total}) in ${payload.durationMs}ms`, color);
+        const tableData = payload.findings.map(f => ({
+          id: f.id, passed: f.passed, weight: f.weight, score: f.score
+        }));
+        console.table(tableData);
+        console.groupEnd();
+      } catch {}
+    }
+
+    // ----------------------------------------------------------------
+    // Heuristic #1: Image probe to chrome-extension://<id>/path
+    // ----------------------------------------------------------------
+    async _probeExtensionImage() {
+      const evid = [], hits = [];
+      const allIds = [
+        ...KNOWN_IDS.chrome.tampermonkey, ...KNOWN_IDS.chrome.violentmonkey,
+        ...KNOWN_IDS.edge.tampermonkey, ...KNOWN_IDS.edge.violentmonkey,
+        ...KNOWN_IDS.opera.tampermonkey, ...KNOWN_IDS.opera.violentmonkey
+      ];
       const tryId = (id) => new Promise(resolve => {
         try {
           const img = new Image();
-          let settled = false;
-          const path = EXT_RESOURCES[rand(0, EXT_RESOURCES.length - 1)];
-          img.onload = () => { if (!settled) { settled = true; resolve({ id, ok: true, via: "img", path }); } };
-          img.onerror = () => { if (!settled) { settled = true; resolve({ id, ok: false, via: "img", path }); } };
+          let done = false; const path = EXT_RESOURCES[rand(0, EXT_RESOURCES.length-1)];
+          img.onload = () => { if (!done) { done = true; resolve({ id, ok:true, path }); } };
+          img.onerror = () => { if (!done) { done = true; resolve({ id, ok:false, path }); } };
           img.src = `chrome-extension://${id}${path}?r=${Math.random()}`;
-          // fallback timeout
-          setTimeout(() => { if (!settled) { settled = true; resolve({ id, ok: false, via: "img", path, timeout: true }); } }, 1200);
-        } catch {
-          resolve({ id, ok: false, via: "img", error: true });
-        }
+          setTimeout(() => { if (!done) { done = true; resolve({ id, ok:false, path, timeout:true }); } }, 1200);
+        } catch { resolve({ id, ok:false, error:true }); }
       });
-
-      const allIds = [
-        ...(KNOWN_IDS.chrome.tampermonkey || []),
-        ...(KNOWN_IDS.chrome.violentmonkey || []),
-        ...(KNOWN_IDS.edge.tampermonkey || []),
-        ...(KNOWN_IDS.edge.violentmonkey || []),
-        ...(KNOWN_IDS.opera.tampermonkey || []),
-        ...(KNOWN_IDS.opera.violentmonkey || [])
-      ];
-
-      const promises = allIds.map(tryId);
-      const res = await Promise.all(promises);
-      for (const r of res) {
-        if (r.ok) {
-          evid.push(`image:${r.id}${r.path}`);
-          hits.push(r.id);
-        }
-      }
-
-      const passed = hits.length > 0;
-      const f = this._addFinding("probeExtensionImage", passed, { hits, evid }, "probeExtensionImage");
-      return f;
+      const res = await Promise.all(allIds.map(tryId));
+      for (const r of res) if (r.ok) { evid.push(`image:${r.id}${r.path}`); hits.push(r.id); }
+      return this._addFinding("probeExtensionImage", hits.length>0, { hits, evid }, "probeExtensionImage");
     }
 
-    // ---------------------------
-    // Heuristic #2: Stylesheet link probe against known extension URLs
-    // ---------------------------
+    // #2: link rel=stylesheet probe
     async _probeExtensionStylesheet() {
-      const evid = [];
-      const hits = [];
-
+      const evid = [], hits = [];
+      const allIds = [
+        ...KNOWN_IDS.chrome.tampermonkey, ...KNOWN_IDS.chrome.violentmonkey,
+        ...KNOWN_IDS.edge.tampermonkey, ...KNOWN_IDS.edge.violentmonkey,
+        ...KNOWN_IDS.opera.tampermonkey, ...KNOWN_IDS.opera.violentmonkey
+      ];
       const tryId = (id) => new Promise(resolve => {
         let link;
         try {
-          link = document.createElement("link");
-          link.rel = "stylesheet";
-          const path = EXT_RESOURCES[rand(0, EXT_RESOURCES.length - 1)];
-          let settled = false;
-          link.onload = () => { if (!settled) { settled = true; resolve({ id, ok: true, via: "css", path }); cleanup(); } };
-          link.onerror = () => { if (!settled) { settled = true; resolve({ id, ok: false, via: "css", path }); cleanup(); } };
+          link = document.createElement("link"); link.rel = "stylesheet";
+          let done = false; const path = EXT_RESOURCES[rand(0, EXT_RESOURCES.length-1)];
+          link.onload = () => { if (!done) { done = true; cleanup(); resolve({ id, ok:true, path }); } };
+          link.onerror = () => { if (!done) { done = true; cleanup(); resolve({ id, ok:false, path }); } };
           link.href = `chrome-extension://${id}${path}?r=${Math.random()}`;
           document.documentElement.appendChild(link);
-
-          const cleanup = () => {
-            try { link.remove(); } catch {}
-          };
-
-          setTimeout(() => { if (!settled) { settled = true; resolve({ id, ok: false, via: "css", path, timeout: true }); cleanup(); } }, 1200);
-        } catch {
-          resolve({ id, ok: false, via: "css", error: true });
-        }
+          function cleanup(){ try{link.remove();}catch{} }
+          setTimeout(() => { if (!done) { done = true; cleanup(); resolve({ id, ok:false, path, timeout:true }); } }, 1200);
+        } catch { resolve({ id, ok:false, error:true }); }
       });
-
-      const allIds = [
-        ...(KNOWN_IDS.chrome.tampermonkey || []),
-        ...(KNOWN_IDS.chrome.violentmonkey || []),
-        ...(KNOWN_IDS.edge.tampermonkey || []),
-        ...(KNOWN_IDS.edge.violentmonkey || []),
-        ...(KNOWN_IDS.opera.tampermonkey || []),
-        ...(KNOWN_IDS.opera.violentmonkey || [])
-      ];
-
       const res = await Promise.all(allIds.map(tryId));
-      for (const r of res) {
-        if (r.ok) {
-          evid.push(`css:${r.id}${r.path}`);
-          hits.push(r.id);
-        }
-      }
-      const passed = hits.length > 0;
-      return this._addFinding("probeExtensionStylesheet", passed, { hits, evid }, "probeExtensionStylesheet");
+      for (const r of res) if (r.ok) { evid.push(`css:${r.id}${r.path}`); hits.push(r.id); }
+      return this._addFinding("probeExtensionStylesheet", hits.length>0, { hits, evid }, "probeExtensionStylesheet");
     }
 
-    // ---------------------------
-    // Heuristic #3: Resource Timing API scan for chrome-/moz-extension URLs
-    // ---------------------------
+    // #3: ResourceTiming scan of moz/chrome-extension
     async _scanResourceTimings() {
       try {
         const entries = performance.getEntriesByType("resource") || [];
-        const ext = entries.filter(e => typeof e.name === "string" && (
-          e.name.startsWith("chrome-extension://") || e.name.startsWith("moz-extension://")
-        )).map(e => e.name);
-        const passed = ext.length > 0;
-        return this._addFinding("scanResourceTimings", passed, { ext }, "scanResourceTimings");
-      } catch {
-        return this._addFinding("scanResourceTimings", false, { error: true }, "scanResourceTimings");
-      }
+        const ext = entries.filter(e => typeof e.name === "string" && (e.name.startsWith("chrome-extension://") || e.name.startsWith("moz-extension://"))).map(e => e.name);
+        return this._addFinding("scanResourceTimings", ext.length>0, { ext }, "scanResourceTimings");
+      } catch { return this._addFinding("scanResourceTimings", false, { error:true }, "scanResourceTimings"); }
     }
 
-    // ---------------------------
-    // Heuristic #4: Mutation scan for extension script tags
-    // ---------------------------
+    // #4: DOM scan for extension scripts
     async _scanDOMForExtensionScripts() {
       try {
-        const scripts = Array.from(document.getElementsByTagName("script"));
-        const hits = scripts
-          .map(s => s.src || "")
-          .filter(src => src.startsWith("chrome-extension://") || src.startsWith("moz-extension://"));
-        const passed = hits.length > 0;
-        return this._addFinding("scanDOMForExtensionScripts", passed, { hits }, "scanDOMForExtensionScripts");
-      } catch {
-        return this._addFinding("scanDOMForExtensionScripts", false, { error: true }, "scanDOMForExtensionScripts");
-      }
+        const hits = Array.from(document.scripts).map(s => s.src||"").filter(src => src.startsWith("chrome-extension://") || src.startsWith("moz-extension://"));
+        return this._addFinding("scanDOMForExtensionScripts", hits.length>0, { hits }, "scanDOMForExtensionScripts");
+      } catch { return this._addFinding("scanDOMForExtensionScripts", false, { error:true }, "scanDOMForExtensionScripts"); }
     }
 
-    // ---------------------------
-    // Heuristic #5: Stylesheet list scan for extension-owned CSS
-    // ---------------------------
+    // #5: stylesheet hrefs
     async _scanStylesForExtensionHrefs() {
       try {
-        const sheets = Array.from(document.styleSheets || []);
         const hits = [];
-        for (const sh of sheets) {
+        for (const sh of Array.from(document.styleSheets||[])) {
           const href = sh && sh.href || "";
-          if (typeof href === "string" && (href.startsWith("chrome-extension://") || href.startsWith("moz-extension://"))) {
-            hits.push(href);
-          }
+          if (href && (href.startsWith("chrome-extension://") || href.startsWith("moz-extension://"))) hits.push(href);
         }
-        const passed = hits.length > 0;
-        return this._addFinding("scanStylesForExtensionHrefs", passed, { hits }, "scanStylesForExtensionHrefs");
-      } catch {
-        return this._addFinding("scanStylesForExtensionHrefs", false, { error: true }, "scanStylesForExtensionHrefs");
-      }
+        return this._addFinding("scanStylesForExtensionHrefs", hits.length>0, { hits }, "scanStylesForExtensionHrefs");
+      } catch { return this._addFinding("scanStylesForExtensionHrefs", false, { error:true }, "scanStylesForExtensionHrefs"); }
     }
 
-    // ---------------------------
-    // Heuristic #6: Detect XHR monkey patching
-    // ---------------------------
+    // #6: XHR hook
     async _detectXHRHook() {
       try {
         const o = XMLHttpRequest && XMLHttpRequest.prototype;
-        const openDesc = o && safeDesc(o, "open");
-        const sendDesc = o && safeDesc(o, "send");
-        const openLooksNative = openDesc && looksNative(openDesc.value);
-        const sendLooksNative = sendDesc && looksNative(sendDesc.value);
-        const passed = !(openLooksNative && sendLooksNative); // pass = suspicious
-        const ev = { openLooksNative, sendLooksNative };
-        return this._addFinding("detectXHRHook", passed, ev, "detectXHRHook");
-      } catch {
-        return this._addFinding("detectXHRHook", false, { error: true }, "detectXHRHook");
-      }
+        const openLooks = o && looksNative(o.open);
+        const sendLooks = o && looksNative(o.send);
+        return this._addFinding("detectXHRHook", !(openLooks && sendLooks), { openLooks, sendLooks }, "detectXHRHook");
+      } catch { return this._addFinding("detectXHRHook", false, { error:true }, "detectXHRHook");}
     }
 
-    // ---------------------------
-    // Heuristic #7: Detect fetch monkey patching
-    // ---------------------------
+    // #7: fetch hook
     async _detectFetchHook() {
       try {
-        const f = window.fetch;
-        const looks = looksNative(f);
-        const passed = !looks;
-        return this._addFinding("detectFetchHook", passed, { fetchNative: looks }, "detectFetchHook");
-      } catch {
-        return this._addFinding("detectFetchHook", false, { error: true }, "detectFetchHook");
-      }
+        const fetchNative = looksNative(window.fetch);
+        return this._addFinding("detectFetchHook", !fetchNative, { fetchNative }, "detectFetchHook");
+      } catch { return this._addFinding("detectFetchHook", false, { error:true }, "detectFetchHook"); }
     }
 
-    // ---------------------------
-    // Heuristic #8: Detect WebSocket monkey patching
-    // ---------------------------
+    // #8: WebSocket hook
     async _detectWebSocketHook() {
       try {
-        const ws = window.WebSocket;
-        const ctorNative = looksNative(ws);
-        const sendNative = ws && ws.prototype && looksNative(ws.prototype.send);
-        const passed = !(ctorNative && sendNative);
-        return this._addFinding("detectWebSocketHook", passed, { ctorNative, sendNative }, "detectWebSocketHook");
-      } catch {
-        return this._addFinding("detectWebSocketHook", false, { error: true }, "detectWebSocketHook");
-      }
+        const ctorNative = looksNative(window.WebSocket);
+        const sendNative = window.WebSocket && window.WebSocket.prototype && looksNative(window.WebSocket.prototype.send);
+        return this._addFinding("detectWebSocketHook", !(ctorNative && sendNative), { ctorNative, sendNative }, "detectWebSocketHook");
+      } catch { return this._addFinding("detectWebSocketHook", false, { error:true }, "detectWebSocketHook"); }
     }
 
-    // ---------------------------
-    // Heuristic #9: Detect console.* tampering (lightweight)
-    // ---------------------------
+    // #9: console tamper
     async _detectConsoleHook() {
       try {
-        const c = console || {};
-        const hooks = ["log", "warn", "error", "debug"].map(k => ({ k, native: looksNative(c[k]) }));
-        const anyNonNative = hooks.some(h => !h.native);
-        const passed = anyNonNative;
-        return this._addFinding("detectConsoleHook", passed, { hooks }, "detectConsoleHook");
-      } catch {
-        return this._addFinding("detectConsoleHook", false, { error: true }, "detectConsoleHook");
-      }
+        const c = console||{};
+        const hooks = ["log","warn","error","debug","info","table","trace","group","groupCollapsed","groupEnd"].map(k => ({k, native: looksNative(c[k])}));
+        const anyNon = hooks.some(h => !h.native);
+        return this._addFinding("detectConsoleHook", anyNon, { hooks }, "detectConsoleHook");
+      } catch { return this._addFinding("detectConsoleHook", false, { error:true }, "detectConsoleHook"); }
     }
 
-    // ---------------------------
-    // Heuristic #10: Detect Function.prototype.toString tampering
-    // ---------------------------
+    // #10: toString tamper (local realm)
     async _detectToStringTamper() {
       try {
         const ts = Function.prototype.toString;
         const tsNative = looksNative(ts);
-        // A stricter check: ensure toString of a native method shows [native code]
         const baseNative = NATIVE_RX.test(Function.prototype.toString.call(Object.prototype.toString));
-        const passed = !(tsNative && baseNative); // suspicious if any deviates
-        return this._addFinding("detectToStringTamper", passed, { tsNative, baseNative }, "detectToStringTamper");
-      } catch {
-        return this._addFinding("detectToStringTamper", false, { error: true }, "detectToStringTamper");
-      }
+        return this._addFinding("detectToStringTamper", !(tsNative && baseNative), { tsNative, baseNative }, "detectToStringTamper");
+      } catch { return this._addFinding("detectToStringTamper", false, { error:true }, "detectToStringTamper"); }
     }
 
-    // ---------------------------
-    // Heuristic #11: Mutation observer trap (catch extension/user scripts injecting)
-    // ---------------------------
+    // #11/#12: mutation traps / ad bait
     _prepareMutationBait() {
       if (this._mo) return;
       try {
         const bait = document.createElement("div");
-        bait.id = `tm-bait-${Math.random().toString(36).slice(2)}`;
-        bait.setAttribute("data-bait", "script-injection");
-        bait.innerHTML = "<span style='display:none'>bait</span>";
-        appendHidden(bait);
-        this._bait = bait;
+        bait.id=`tm-bait-${Math.random().toString(36).slice(2)}`; bait.setAttribute("data-bait","script-injection");
+        bait.innerHTML="<span style='display:none'>bait</span>";
+        appendHidden(bait); this._bait = bait;
 
         const mo = new MutationObserver((muts) => {
           for (const m of muts) {
             if (m.type === "childList") {
-              const added = Array.from(m.addedNodes || []).filter(n => n.nodeType === 1);
-              for (const node of added) {
-                try {
-                  const tag = node.tagName ? node.tagName.toLowerCase() : "";
-                  if (tag === "script") {
-                    const src = node.src || "";
-                    if (src.startsWith("chrome-extension://") || src.startsWith("moz-extension://")) {
-                      this._addFinding("mutationScriptTrap", true, { src }, "mutationScriptTrap");
-                    }
-                  }
-                } catch {}
-              }
-            }
-            if (m.type === "attributes" && m.attributeName) {
-              const attr = m.attributeName;
-              const v = (m.target && m.target.getAttribute && m.target.getAttribute(attr)) || "";
-              if (typeof v === "string" && (v.includes("tampermonkey") || v.includes("userscript"))) {
-                this._addFinding("mutationScriptTrap", true, { attr, v }, "mutationScriptTrap");
-              }
+              for (const n of Array.from(m.addedNodes||[])) try{
+                const tag = n.tagName?.toLowerCase()||"";
+                if (tag==="script") {
+                  const src = n.src||"";
+                  if (src.startsWith("chrome-extension://") || src.startsWith("moz-extension://"))
+                    this._addFinding("mutationScriptTrap", true, { src }, "mutationScriptTrap");
+                }
+              }catch{}
             }
           }
         });
-
-        mo.observe(document.documentElement || document.body, {
-          childList: true,
-          subtree: true,
-          attributes: true,
-          attributeFilter: ["src", "href", "data-*", "class"]
-        });
-
+        mo.observe(document.documentElement || document.body, { childList:true, subtree:true, attributes:true, attributeFilter:["src","href","class","data-*"] });
         this._mo = mo;
-      } catch (e) {
-        this._warn("mutation observer unavailable", e);
-      }
+      } catch(e) { this._dwarn("mutation observer unavailable", e); }
     }
 
     async _mutationScriptTrapCheck() {
-      // Passive check: if _prepareMutationBait has already emitted findings, we can surface.
-      // Otherwise, do a tiny scan in case things were added before MO.
       try {
-        const scripts = Array.from(document.getElementsByTagName("script"));
-        const hit = scripts.find(s => (s.src || "").startsWith("chrome-extension://") || (s.src || "").startsWith("moz-extension://"));
-        const passed = !!hit;
-        return this._addFinding("mutationScriptTrap", passed, { preScanHit: !!hit, src: hit ? hit.src : null }, "mutationScriptTrap");
-      } catch {
-        return this._addFinding("mutationScriptTrap", false, { error: true }, "mutationScriptTrap");
-      }
+        const hit = Array.from(document.scripts).find(s => (s.src||"").startsWith("chrome-extension://") || (s.src||"").startsWith("moz-extension://"));
+        return this._addFinding("mutationScriptTrap", !!hit, { preScanHit: !!hit, src: hit?.src ?? null }, "mutationScriptTrap");
+      } catch { return this._addFinding("mutationScriptTrap", false, { error:true }, "mutationScriptTrap"); }
     }
 
-    // ---------------------------
-    // Heuristic #12: Ad-removal bait (common userscripts/adblockers)
-    // ---------------------------
     _prepareAdBait() {
       if (this._adBait) return;
       try {
-        const bait = document.createElement("div");
-        bait.id = `ad-banner-${Math.random().toString(36).slice(2)}`;
-        bait.className = "ad ad-banner adsbox";
-        bait.textContent = "advertisement";
-        appendHidden(bait);
-        this._adBait = bait;
+        const b = document.createElement("div");
+        b.id=`ad-banner-${Math.random().toString(36).slice(2)}`;
+        b.className="ad ad-banner adsbox"; b.textContent="advertisement";
+        appendHidden(b); this._adBait = b;
       } catch {}
     }
 
     async _baitAdRemovalTrapCheck() {
       try {
-        if (!this._adBait) return this._addFinding("baitAdRemovalTrap", false, { prepared: false }, "baitAdRemovalTrap");
-        const style = getComputedStyle(this._adBait);
-        const hidden = style && (style.display === "none" || style.visibility === "hidden" || style.opacity === "0");
-        const rect = this._adBait.getBoundingClientRect();
-        const collapsed = rect.width === 0 || rect.height === 0;
+        if (!this._adBait) return this._addFinding("baitAdRemovalTrap", false, { prepared:false }, "baitAdRemovalTrap");
+        const cs = getComputedStyle(this._adBait);
+        const hidden = cs && (cs.display==="none"||cs.visibility==="hidden"||cs.opacity==="0");
+        const r = this._adBait.getBoundingClientRect();
+        const collapsed = r.width===0 || r.height===0;
         const removed = !document.documentElement.contains(this._adBait);
-        const suspicious = hidden || collapsed || removed;
-        return this._addFinding("baitAdRemovalTrap", suspicious, { hidden, collapsed, removed }, "baitAdRemovalTrap");
-      } catch {
-        return this._addFinding("baitAdRemovalTrap", false, { error: true }, "baitAdRemovalTrap");
-      }
+        return this._addFinding("baitAdRemovalTrap", (hidden||collapsed||removed), { hidden, collapsed, removed }, "baitAdRemovalTrap");
+      } catch { return this._addFinding("baitAdRemovalTrap", false, { error:true }, "baitAdRemovalTrap"); }
     }
 
-    // ---------------------------
-    // Heuristic #13: Timing anomaly check (rough)
-    // ---------------------------
+    // #13: timing anomaly
     async _timingAnomalyCheck() {
       try {
-        const samples = 8;
-        const deltas = [];
-        let p = Promise.resolve();
-        let last = now();
-        for (let i = 0; i < samples; i++) {
-          p = p.then(() => new Promise(res => setTimeout(res, 0))).then(() => {
-            const t = now();
-            deltas.push(t - last);
-            last = t;
-          });
-        }
-        await p;
-        const avg = deltas.reduce((a, b) => a + b, 0) / Math.max(1, deltas.length);
-        const spikes = deltas.filter(d => d > 8).length; // arbitrary
-        const suspicious = (avg > 4 && spikes >= 2);
-        return this._addFinding("timingAnomaly", suspicious, { avg, spikes, deltas }, "timingAnomaly");
-      } catch {
-        return this._addFinding("timingAnomaly", false, { error: true }, "timingAnomaly");
-      }
+        const samples=8, deltas=[]; let last=now();
+        for (let i=0;i<samples;i++) { await new Promise(r=>setTimeout(r,0)); const t=now(); deltas.push(t-last); last=t; }
+        const avg = deltas.reduce((a,b)=>a+b,0)/Math.max(1,deltas.length);
+        const spikes = deltas.filter(d=>d>8).length;
+        return this._addFinding("timingAnomaly", (avg>4 && spikes>=2), { avg, spikes, deltas }, "timingAnomaly");
+      } catch { return this._addFinding("timingAnomaly", false, { error:true }, "timingAnomaly"); }
     }
 
-    // ---------------------------
-    // Heuristic #14: Window/global props (rare leaks)
-    // ---------------------------
+    // #14: window props
     async _checkWindowProps() {
       try {
-        const suspectKeys = ["GM_info", "GM", "GM_addStyle", "GM_getValue", "unsafeWindow", "Violentmonkey", "VM", "Tampermonkey"];
-        const present = [];
-        for (const k of suspectKeys) {
-          try {
-            if (k in window) present.push(k);
-          } catch {}
-        }
-        const passed = present.length > 0;
-        return this._addFinding("checkWindowProps", passed, { present }, "checkWindowProps");
-      } catch {
-        return this._addFinding("checkWindowProps", false, { error: true }, "checkWindowProps");
-      }
+        const keys=["GM_info","GM","GM_addStyle","GM_getValue","unsafeWindow","Violentmonkey","VM","Tampermonkey"];
+        const present = keys.filter(k => { try { return k in window; } catch { return false; }});
+        return this._addFinding("checkWindowProps", present.length>0, { present }, "checkWindowProps");
+      } catch { return this._addFinding("checkWindowProps", false, { error:true }, "checkWindowProps"); }
     }
 
-    // ---------------------------
-    // Heuristic #15: Stack trace leak of moz-extension/chrome-extension
-    // ---------------------------
+    // #15: stack leak
     async _stackMozExtensionLeak() {
       try {
-        const err = new Error("__istria_stack_probe__");
-        const stack = (err.stack || "") + "";
+        const err = new Error("__am_stack_probe__");
+        const stack = (err.stack||"")+"";
         const hit = /moz-extension:\/\//i.test(stack) || /chrome-extension:\/\//i.test(stack);
-        return this._addFinding("stackMozExtensionLeak", hit, { stack: hit ? stack.slice(0, 400) : null }, "stackMozExtensionLeak");
-      } catch {
-        return this._addFinding("stackMozExtensionLeak", false, { error: true }, "stackMozExtensionLeak");
-      }
+        return this._addFinding("stackMozExtensionLeak", hit, { stack: hit ? stack.slice(0,400) : null }, "stackMozExtensionLeak");
+      } catch { return this._addFinding("stackMozExtensionLeak", false, { error:true }, "stackMozExtensionLeak"); }
     }
 
-    // ---------------------------
-    // Heuristic #16: Scan iframes for extension origins
-    // ---------------------------
+    // #16: iframe scan
     async _detectExtensionIframes() {
       try {
-        const ifr = Array.from(document.getElementsByTagName("iframe"));
-        const hits = [];
-        for (const f of ifr) {
-          try {
-            const src = f.src || "";
-            if (src.startsWith("chrome-extension://") || src.startsWith("moz-extension://")) hits.push(src);
-          } catch {}
-        }
-        const passed = hits.length > 0;
-        return this._addFinding("detectExtensionIframes", passed, { hits }, "detectExtensionIframes");
-      } catch {
-        return this._addFinding("detectExtensionIframes", false, { error: true }, "detectExtensionIframes");
-      }
+        const hits = Array.from(document.getElementsByTagName("iframe")).map(f => f.src||"").filter(src => src.startsWith("chrome-extension://") || src.startsWith("moz-extension://"));
+        return this._addFinding("detectExtensionIframes", hits.length>0, { hits }, "detectExtensionIframes");
+      } catch { return this._addFinding("detectExtensionIframes", false, { error:true }, "detectExtensionIframes"); }
+    }
+
+    // ---------------- NEW: fresh-realm anti-masking utilities ----------------
+    async _withFreshRealm(cb) {
+      return new Promise((resolve) => {
+        const f = document.createElement("iframe");
+        f.style.display="none";
+        f.srcdoc = "<!doctype html><meta charset=utf-8>";
+        f.onload = () => {
+          try { const w = f.contentWindow; resolve(cb(w)); }
+          catch (e) { resolve({ error:true, msg: String(e) }); }
+          finally { try { f.remove(); } catch{} }
+        };
+        document.documentElement.appendChild(f);
+      });
+    }
+
+    // NEW #17: freshToStringMismatch — compare local FP.toString vs fresh realm
+    async _freshToStringMismatch() {
+      try {
+        const r = await this._withFreshRealm((fw) => {
+          const freshTS = fw.Function.prototype.toString;
+          const localTS = Function.prototype.toString;
+          const eq = freshTS === localTS;
+          const freshNative = NATIVE_RX.test(freshTS.call(localTS));
+          const localAsSeenByFresh = NATIVE_RX.test(freshTS.call(freshTS));
+          return { eq, freshNative, localAsSeenByFresh };
+        });
+        // suspicious if not eq OR fresh sees local as non-native
+        const passed = !!(r && (!r.eq || (r.freshNative && !r.localAsSeenByFresh)));
+        return this._addFinding("freshToStringMismatch", passed, r, "freshToStringMismatch");
+      } catch { return this._addFinding("freshToStringMismatch", false, { error:true }, "freshToStringMismatch"); }
+    }
+
+    // NEW #18: crossRealmConsoleProbe — fresh realm toString on page console.log
+    async _crossRealmConsoleProbe() {
+      try {
+        const r = await this._withFreshRealm((fw) => {
+          const sFreshOnPage = fw.Function.prototype.toString.call(console.log);
+          const sLocal = Function.prototype.toString.call(console.log);
+          const sFreshOnFresh = fw.Function.prototype.toString.call(fw.console.log);
+          const looksNativeFreshOnPage = NATIVE_RX.test(sFreshOnPage);
+          const looksNativeLocal = NATIVE_RX.test(sLocal);
+          const looksNativeFreshOnFresh = NATIVE_RX.test(sFreshOnFresh);
+          const mismatch = (sFreshOnPage !== sLocal) || !looksNativeFreshOnFresh;
+          return { sFreshOnPage, sLocal, sFreshOnFresh, looksNativeFreshOnPage, looksNativeLocal, looksNativeFreshOnFresh, mismatch };
+        });
+        const passed = !!(r && (r.mismatch || (r.looksNativeFreshOnPage && !r.looksNativeLocal)));
+        return this._addFinding("crossRealmConsoleProbe", passed, r, "crossRealmConsoleProbe");
+      } catch { return this._addFinding("crossRealmConsoleProbe", false, { error:true }, "crossRealmConsoleProbe"); }
+    }
+
+    // NEW #19: descriptorWeirdness — console.log property descriptor sanity
+    async _descriptorWeirdness() {
+      try {
+        const d = safeDesc(console, "log") || {};
+        const weird = (typeof console.log === "function") && (d.configurable === true || d.enumerable === true);
+        return this._addFinding("descriptorWeirdness", weird, { descriptor:d }, "descriptorWeirdness");
+      } catch { return this._addFinding("descriptorWeirdness", false, { error:true }, "descriptorWeirdness"); }
     }
   }
 
-  // Expose globally
+  // Expose + auto-start (set debug/threshold as needed)
   window.AntiMonkey = AntiMonkey;
 
-  // Auto-start with sane defaults; customize as needed.
-  // Remove/modify this block if you prefer manual control.
   AntiMonkey.start({
-    debug: false,
+    debug: true,          // set to false in prod
+    threshold: 35,        // suspicion threshold (0..100)
     continuous: true,
-    onScore: ({ score, suspected, findings }) => {
-      // Lightweight logging hook; replace with your own telemetry
-      // console.log("[AntiMonkey] score:", score, "suspected:", suspected, findings);
+    onScore: ({ score, suspected, durationMs }) => {
+      // lightweight ping (leave empty or wire telemetry)
+     console.log("[AM] score:", score, "suspected:", suspected, "in", durationMs, "ms");
     },
-    onDetect: (payload) => {
-      // Example: react when suspicion crosses threshold
-      // You can raise a UI warning, lock critical actions, or phone-home telemetry.
-      console.warn("[AntiMonkey] DETECTED:", payload);
+    onDetect: (p) => {
+     console.warn("[AM] DETECTED", p);
     }
   });
 
