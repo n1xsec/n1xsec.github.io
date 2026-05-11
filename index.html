@@ -1,0 +1,559 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
+<title>nix — starlight</title>
+<meta name="theme-color" content="#0a0014" />
+<meta property="og:title" content="nix" />
+<meta property="og:description" content="starlight." />
+<meta property="og:type" content="profile" />
+<link rel="preconnect" href="https://api.lanyard.rest" />
+<link rel="preconnect" href="https://cdn.discordapp.com" />
+<style>
+  :root{
+    --bg:#05010d;
+    --ink:#f3e9ff;
+    --muted:#b9a6d9;
+    --accent:#c9a7ff;
+    --accent-2:#7a5cff;
+    --glow:#a987ff;
+    --online:#23a55a;
+    --idle:#f0b232;
+    --dnd:#f23f43;
+    --offline:#80848e;
+  }
+  *{box-sizing:border-box}
+  html,body{height:100%;margin:0;background:#000;color:var(--ink);font-family:"Inter","SF Pro Display",system-ui,-apple-system,Segoe UI,Roboto,sans-serif;overflow:hidden}
+  ::selection{background:var(--accent-2);color:#fff}
+
+  .starfield{position:fixed;inset:0;background:
+    radial-gradient(1200px 700px at 50% 20%, rgba(122,92,255,.25), transparent 60%),
+    radial-gradient(900px 500px at 80% 90%, rgba(201,167,255,.18), transparent 60%),
+    radial-gradient(700px 400px at 10% 90%, rgba(90,60,200,.15), transparent 60%),
+    #05010d;
+    z-index:0}
+  .starfield::before,.starfield::after{
+    content:"";position:absolute;inset:-50%;
+    background-image:
+      radial-gradient(1px 1px at 20% 30%,#fff,transparent 60%),
+      radial-gradient(1px 1px at 40% 70%,#fff,transparent 60%),
+      radial-gradient(1px 1px at 70% 20%,#dcd0ff,transparent 60%),
+      radial-gradient(1px 1px at 85% 60%,#fff,transparent 60%),
+      radial-gradient(1px 1px at 10% 80%,#fff,transparent 60%),
+      radial-gradient(1.5px 1.5px at 55% 45%,#fff,transparent 60%),
+      radial-gradient(1px 1px at 30% 10%,#c9a7ff,transparent 60%),
+      radial-gradient(1px 1px at 65% 85%,#fff,transparent 60%);
+    background-size:600px 600px;
+    opacity:.6;
+    animation:drift 120s linear infinite;
+  }
+  .starfield::after{background-size:900px 900px;opacity:.35;animation-duration:200s;animation-direction:reverse}
+  @keyframes drift{from{transform:translate3d(0,0,0)}to{transform:translate3d(-600px,-600px,0)}}
+  @keyframes spin{to{transform:rotate(360deg)}}
+
+  #bgvid{
+    position:fixed;inset:0;width:100%;height:100%;object-fit:cover;
+    z-index:1;opacity:0;transition:opacity 1.2s ease;
+    filter:saturate(1.05) contrast(1.02);
+    pointer-events:none;
+  }
+  body.entered #bgvid{opacity:.85}
+  .vignette{
+    position:fixed;inset:0;z-index:2;pointer-events:none;
+    background:
+      radial-gradient(1200px 800px at 50% 50%, transparent 0%, rgba(5,1,13,.55) 70%, rgba(5,1,13,.9) 100%),
+      linear-gradient(180deg, rgba(5,1,13,.45) 0%, rgba(5,1,13,.15) 35%, rgba(5,1,13,.55) 100%);
+  }
+
+  .enter{
+    position:fixed;inset:0;z-index:50;display:grid;place-items:center;
+    background:#000;
+    cursor:pointer;
+    transition:opacity .9s ease;
+    overflow:hidden;
+  }
+  .enter .ghost{
+    position:absolute;inset:0;background:url("./23.gif") center/cover no-repeat;
+    opacity:.08;filter:grayscale(.4) contrast(.9);
+    pointer-events:none;
+  }
+  .enter .ghost::after{
+    content:"";position:absolute;inset:0;
+    background:radial-gradient(ellipse at center, transparent 0%, #000 80%);
+  }
+  .enter.hide{opacity:0;pointer-events:none}
+
+  .enter .glitch{
+    position:relative;font-family:"Inter",system-ui,sans-serif;
+    font-size:clamp(18px,3.2vw,28px);
+    letter-spacing:.42em;text-transform:uppercase;color:#fff;font-weight:500;
+    text-shadow:0 0 1px #fff;
+  }
+  .enter .glitch::before,.enter .glitch::after{
+    content:attr(data-text);position:absolute;left:0;top:0;width:100%;
+  }
+  .enter .glitch::before{
+    color:#ff3b6b;transform:translate(-2px,0);
+    clip-path:polygon(0 0,100% 0,100% 45%,0 45%);
+    animation:gl1 2.6s infinite steps(1);
+    mix-blend-mode:screen;
+  }
+  .enter .glitch::after{
+    color:#3bf0ff;transform:translate(2px,0);
+    clip-path:polygon(0 55%,100% 55%,100% 100%,0 100%);
+    animation:gl2 2.6s infinite steps(1);
+    mix-blend-mode:screen;
+  }
+  @keyframes gl1{
+    0%,86%,100%{transform:translate(0,0)}
+    87%{transform:translate(-3px,1px)}
+    89%{transform:translate(2px,-1px)}
+    91%{transform:translate(-2px,0)}
+    93%{transform:translate(1px,1px)}
+  }
+  @keyframes gl2{
+    0%,84%,100%{transform:translate(0,0)}
+    85%{transform:translate(2px,-1px)}
+    88%{transform:translate(-2px,1px)}
+    92%{transform:translate(3px,0)}
+    95%{transform:translate(-1px,-1px)}
+  }
+
+  .enter .scan{
+    position:absolute;inset:0;pointer-events:none;
+    background:repeating-linear-gradient(0deg, rgba(255,255,255,.025) 0 1px, transparent 1px 3px);
+    mix-blend-mode:overlay;
+  }
+  .enter .flick{
+    position:absolute;inset:0;pointer-events:none;background:#fff;
+    opacity:0;animation:flick 5s steps(1) infinite;
+  }
+  @keyframes flick{
+    0%,97%,100%{opacity:0}
+    97.5%{opacity:.04}
+    98%{opacity:0}
+    98.5%{opacity:.06}
+    99%{opacity:0}
+  }
+
+  .stage{
+    position:relative;z-index:10;height:100%;display:grid;place-items:center;
+    padding:28px;
+    opacity:0;transform:translateY(10px);
+    transition:opacity 1.1s ease .2s, transform 1.1s ease .2s;
+  }
+  body.entered .stage{opacity:1;transform:none}
+
+  .card{
+    width:min(460px, 94vw);
+    border-radius:22px;
+    background:linear-gradient(180deg, rgba(26,10,50,.72), rgba(10,2,26,.78));
+    border:1px solid rgba(201,167,255,.18);
+    box-shadow:
+      0 30px 80px rgba(0,0,0,.55),
+      0 0 0 1px rgba(255,255,255,.03) inset,
+      0 0 60px rgba(122,92,255,.2);
+    backdrop-filter:blur(18px) saturate(140%);
+    -webkit-backdrop-filter:blur(18px) saturate(140%);
+    overflow:hidden;position:relative;
+  }
+  .card::before{
+    content:"";position:absolute;inset:-1px;border-radius:22px;pointer-events:none;
+    background:linear-gradient(135deg, rgba(201,167,255,.45), transparent 30%, transparent 70%, rgba(122,92,255,.35));
+    -webkit-mask:linear-gradient(#000,#000) content-box, linear-gradient(#000,#000);
+    -webkit-mask-composite:xor;mask-composite:exclude;padding:1px;
+  }
+
+  .banner{
+    height:120px;position:relative;overflow:hidden;
+    background:#0a0218 url("./23.gif") center/cover no-repeat;
+  }
+  .banner::after{
+    content:"";position:absolute;inset:0;
+    background:linear-gradient(180deg, rgba(5,1,13,.15) 0%, rgba(5,1,13,.55) 100%);
+  }
+
+  .avatar-wrap{
+    position:absolute;left:22px;bottom:-40px;width:96px;height:96px;border-radius:50%;
+    background:#0a0218;padding:5px;
+  }
+  .avatar{
+    width:100%;height:100%;border-radius:50%;display:block;object-fit:cover;background:#120727;
+    box-shadow:0 0 0 1px rgba(255,255,255,.06);
+  }
+  .status-dot{
+    position:absolute;right:2px;bottom:2px;width:22px;height:22px;border-radius:50%;
+    background:var(--offline);border:4px solid #0a0218;transition:background .4s ease;
+  }
+  .status-dot.online{background:var(--online);box-shadow:0 0 12px rgba(35,165,90,.7)}
+  .status-dot.idle{background:var(--idle);box-shadow:0 0 12px rgba(240,178,50,.7)}
+  .status-dot.dnd{background:var(--dnd);box-shadow:0 0 12px rgba(242,63,67,.7)}
+  .status-dot.offline{background:var(--offline)}
+
+  .body{padding:56px 24px 22px}
+  .name-row{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap}
+  .display-name{font-family:"Cormorant Garamond",Georgia,serif;font-size:28px;font-weight:500;letter-spacing:.02em;color:#fff;margin:0}
+  .username{color:var(--muted);font-size:14px;letter-spacing:.04em}
+  .badges{display:flex;gap:6px;margin-top:6px;flex-wrap:wrap;min-height:0}
+  .badge{font-size:10px;letter-spacing:.22em;text-transform:uppercase;color:var(--accent);background:rgba(201,167,255,.1);border:1px solid rgba(201,167,255,.25);padding:4px 8px;border-radius:999px}
+
+  .status-line{
+    margin-top:14px;color:var(--muted);font-size:13px;letter-spacing:.04em;
+    display:flex;align-items:center;gap:8px;min-height:18px;
+  }
+  .status-line .pip{width:8px;height:8px;border-radius:50%;background:var(--offline);transition:background .4s ease}
+  .status-line.online .pip{background:var(--online)}
+  .status-line.idle .pip{background:var(--idle)}
+  .status-line.dnd .pip{background:var(--dnd)}
+
+  .activity{
+    margin-top:16px;padding:14px;border-radius:14px;
+    background:rgba(255,255,255,.03);border:1px solid rgba(201,167,255,.12);
+    display:none;grid-template-columns:56px 1fr;gap:12px;align-items:center;
+    animation:slideIn .5s ease;
+  }
+  .activity.show{display:grid}
+  .activity .art{position:relative;width:56px;height:56px;border-radius:10px;overflow:hidden;background:#1a0a34;flex-shrink:0}
+  .activity .art img{width:100%;height:100%;object-fit:cover}
+  .activity .art .small{
+    position:absolute;right:-4px;bottom:-4px;width:22px;height:22px;border-radius:50%;
+    background:#0a0218;padding:2px;border:1px solid rgba(255,255,255,.08);
+  }
+  .activity .art .small img{border-radius:50%}
+  .activity .meta{min-width:0}
+  .activity .label{font-size:10px;letter-spacing:.28em;text-transform:uppercase;color:var(--accent);margin-bottom:2px}
+  .activity .title{font-size:14px;color:#fff;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .activity .desc{font-size:12px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .activity .bar{margin-top:6px;height:3px;border-radius:2px;background:rgba(255,255,255,.08);overflow:hidden;display:none}
+  .activity .bar.show{display:block}
+  .activity .bar > span{display:block;height:100%;background:linear-gradient(90deg,#c9a7ff,#7a5cff);width:0%}
+
+  @keyframes slideIn{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+
+  .cta-row{margin-top:22px;display:flex;flex-direction:column;gap:10px}
+  .starlight{
+    --h:56px;
+    position:relative;display:flex;align-items:center;justify-content:center;gap:12px;
+    height:var(--h);padding:0 22px;border-radius:calc(var(--h)/2);
+    color:#fff;text-decoration:none;font-weight:600;letter-spacing:.22em;text-transform:uppercase;font-size:12px;
+    background:linear-gradient(135deg,#5a2dc9,#9366ff 50%,#c9a7ff);
+    box-shadow:0 10px 30px rgba(122,92,255,.45), 0 0 0 1px rgba(255,255,255,.1) inset, 0 0 40px rgba(201,167,255,.25);
+    overflow:hidden;isolation:isolate;transition:transform .25s ease, box-shadow .25s ease;
+  }
+  .starlight::before{
+    content:"";position:absolute;inset:-2px;border-radius:inherit;z-index:-1;
+    background:conic-gradient(from 0deg, #c9a7ff, #7a5cff, #c9a7ff, #7a5cff, #c9a7ff);
+    filter:blur(14px);opacity:.55;animation:spin 6s linear infinite;
+  }
+  .starlight::after{
+    content:"";position:absolute;top:0;left:-60%;width:40%;height:100%;
+    background:linear-gradient(100deg,transparent,rgba(255,255,255,.55),transparent);
+    transform:skewX(-20deg);animation:sheen 3.4s ease-in-out infinite;
+  }
+  @keyframes sheen{0%{left:-60%}60%{left:130%}100%{left:130%}}
+  .starlight:hover{transform:translateY(-1px);box-shadow:0 14px 36px rgba(122,92,255,.6), 0 0 0 1px rgba(255,255,255,.14) inset, 0 0 60px rgba(201,167,255,.35)}
+  .starlight svg{width:18px;height:18px;filter:drop-shadow(0 0 6px rgba(255,255,255,.65))}
+
+  .mute{
+    position:fixed;right:18px;bottom:18px;z-index:30;
+    width:42px;height:42px;border-radius:50%;display:grid;place-items:center;cursor:pointer;
+    background:rgba(10,2,24,.6);border:1px solid rgba(201,167,255,.25);
+    color:#dcd0ff;backdrop-filter:blur(10px);
+    transition:transform .2s ease, background .2s ease;opacity:0;pointer-events:none;
+  }
+  body.entered .mute{opacity:1;pointer-events:auto}
+  .mute:hover{transform:scale(1.06);background:rgba(30,10,60,.7)}
+  .mute svg{width:18px;height:18px}
+
+  @media (max-width:520px){
+    .avatar-wrap{width:86px;height:86px;bottom:-34px}
+    .body{padding-top:48px}
+    .display-name{font-size:24px}
+  }
+</style>
+</head>
+<body>
+  <div class="starfield"></div>
+
+  <video id="bgvid" src="./23.mp4" playsinline loop preload="auto" muted></video>
+  <div class="vignette"></div>
+
+  <div class="enter" id="enter" role="button" tabindex="0" aria-label="Click to enter">
+    <div class="ghost"></div>
+    <div class="scan"></div>
+    <div class="flick"></div>
+    <div class="glitch" data-text="click to enter">click to enter</div>
+  </div>
+
+  <main class="stage">
+    <section class="card" id="card">
+      <div class="banner" id="banner"></div>
+      <div style="position:relative">
+        <div class="avatar-wrap">
+          <img class="avatar" id="avatar" alt="avatar" src="" />
+          <span class="status-dot offline" id="statusDot"></span>
+        </div>
+      </div>
+
+      <div class="body">
+        <div class="name-row">
+          <h2 class="display-name" id="displayName">nix</h2>
+          <span class="username" id="username">@—</span>
+        </div>
+        <div class="badges" id="badges"></div>
+
+        <div class="status-line offline" id="statusLine">
+          <span class="pip"></span>
+          <span id="statusText">connecting…</span>
+        </div>
+
+        <div class="activity" id="activity">
+          <div class="art">
+            <img id="actLarge" alt="status" src="https://framerusercontent.com/images/M4shS04OfamfhblpmKCnYAKRxMw.png" />
+            <div class="small" id="actSmallWrap" style="display:none"><img id="actSmall" alt="status" src="https://framerusercontent.com/images/M4shS04OfamfhblpmKCnYAKRxMw.png" /></div>
+          </div>
+          <div class="meta">
+            <div class="label" id="actLabel">playing</div>
+            <div class="title" id="actTitle">—</div>
+            <div class="desc" id="actDesc">—</div>
+            <div class="bar" id="actBar"><span id="actBarFill"></span></div>
+          </div>
+        </div>
+
+        <div class="cta-row">
+          <a class="starlight" href="https://discord.gg/starlightnet" target="_blank" rel="noopener">
+            <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+              <path d="M12 2l2.39 6.95L22 9.27l-5.8 4.6L18.18 22 12 17.77 5.82 22l1.98-8.13L2 9.27l7.61-.32L12 2z"/>
+            </svg>
+            <span>join starlight</span>
+            <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+              <path d="M12 2l2.39 6.95L22 9.27l-5.8 4.6L18.18 22 12 17.77 5.82 22l1.98-8.13L2 9.27l7.61-.32L12 2z"/>
+            </svg>
+          </a>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <button class="mute" id="mute" aria-label="Toggle mute" title="Toggle mute">
+    <svg id="muteIcon" viewBox="0 0 24 24" fill="currentColor">
+      <path d="M3 10v4a1 1 0 0 0 1 1h3l4 4a1 1 0 0 0 1.7-.7V5.7A1 1 0 0 0 11 5L7 9H4a1 1 0 0 0-1 1zm13.5 2a4.5 4.5 0 0 0-2.25-3.9v7.8A4.5 4.5 0 0 0 16.5 12zM14 3.23v2.06a7 7 0 0 1 0 13.42v2.06a9 9 0 0 0 0-17.54z"/>
+    </svg>
+  </button>
+
+<script>
+const FALLBACK_IMG = "https://framerusercontent.com/images/M4shS04OfamfhblpmKCnYAKRxMw.png";
+const $ = (id) => document.getElementById(id);
+const enterEl = $("enter");
+const video = $("bgvid");
+const muteBtn = $("mute");
+const muteIcon = $("muteIcon");
+
+function bindFallback(img){
+  if (!img) return;
+  img.addEventListener("error", ()=>{
+    if (img.src !== FALLBACK_IMG) img.src = FALLBACK_IMG;
+  });
+}
+bindFallback($("avatar"));
+bindFallback($("actLarge"));
+bindFallback($("actSmall"));
+
+function enterSite(){
+  if (document.body.classList.contains("entered")) return;
+  document.body.classList.add("entered");
+  enterEl.classList.add("hide");
+  video.muted = false;
+  video.volume = 0.7;
+  video.currentTime = 0;
+  const p = video.play();
+  if (p && p.catch) p.catch(()=>{ video.muted = true; video.play(); });
+  setTimeout(()=> enterEl.remove(), 1000);
+}
+enterEl.addEventListener("click", enterSite);
+enterEl.addEventListener("keydown", (e)=>{ if(e.key === "Enter" || e.key === " ") enterSite(); });
+
+video.addEventListener("loadeddata", ()=>{ video.pause(); });
+
+const ICON_ON  = '<path d="M3 10v4a1 1 0 0 0 1 1h3l4 4a1 1 0 0 0 1.7-.7V5.7A1 1 0 0 0 11 5L7 9H4a1 1 0 0 0-1 1zm13.5 2a4.5 4.5 0 0 0-2.25-3.9v7.8A4.5 4.5 0 0 0 16.5 12zM14 3.23v2.06a7 7 0 0 1 0 13.42v2.06a9 9 0 0 0 0-17.54z"/>';
+const ICON_OFF = '<path d="M3 10v4a1 1 0 0 0 1 1h3l4 4a1 1 0 0 0 1.7-.7V5.7A1 1 0 0 0 11 5L7 9H4a1 1 0 0 0-1 1zm13.59 2l2.7-2.71a1 1 0 1 0-1.41-1.41L15.17 10.6l-2.71-2.71a1 1 0 1 0-1.41 1.41L13.76 12l-2.71 2.71a1 1 0 1 0 1.41 1.41l2.71-2.71 2.71 2.71a1 1 0 0 0 1.41-1.41L16.58 12z"/>';
+muteBtn.addEventListener("click", ()=>{
+  video.muted = !video.muted;
+  muteIcon.innerHTML = video.muted ? ICON_OFF : ICON_ON;
+});
+
+const USER_ID = "1080549487199666286";
+
+let ws, heartbeat, reconnectTimer;
+let currentActivityInterval;
+
+function connect(){
+  clearTimeout(reconnectTimer);
+  try{ ws && ws.close(); }catch(e){}
+  ws = new WebSocket("wss://api.lanyard.rest/socket");
+
+  ws.addEventListener("message", (ev)=>{
+    let msg; try{ msg = JSON.parse(ev.data) }catch(e){ return }
+    const { op, t, d } = msg;
+    if (op === 1){
+      ws.send(JSON.stringify({ op:2, d:{ subscribe_to_id: USER_ID }}));
+      clearInterval(heartbeat);
+      heartbeat = setInterval(()=>{
+        if (ws && ws.readyState === 1) ws.send(JSON.stringify({ op:3 }));
+      }, d.heartbeat_interval || 30000);
+    } else if (op === 0){
+      if (t === "INIT_STATE" || t === "PRESENCE_UPDATE"){
+        render(d);
+      }
+    }
+  });
+  ws.addEventListener("close", ()=>{
+    clearInterval(heartbeat);
+    reconnectTimer = setTimeout(connect, 2500);
+  });
+  ws.addEventListener("error", ()=>{ try{ ws.close() }catch(e){} });
+}
+
+async function fetchOnce(){
+  try{
+    const r = await fetch(`https://api.lanyard.rest/v1/users/${USER_ID}`);
+    const j = await r.json();
+    if (j && j.success && j.data) render(j.data);
+  }catch(e){}
+}
+
+function setStatus(status){
+  const dot = $("statusDot");
+  const line = $("statusLine");
+  const text = $("statusText");
+  ["online","idle","dnd","offline"].forEach(s=>{ dot.classList.remove(s); line.classList.remove(s); });
+  dot.classList.add(status || "offline");
+  line.classList.add(status || "offline");
+  text.textContent = ({
+    online:"online",
+    idle:"idle / away",
+    dnd:"do not disturb",
+    offline:"offline"
+  })[status] || "offline";
+}
+
+function avatarURL(user){
+  if (!user) return FALLBACK_IMG;
+  if (user.avatar){
+    const ext = user.avatar.startsWith("a_") ? "gif" : "png";
+    return `https://cdn.discordapp.com/avatars/${user.id}/${user.avatar}.${ext}?size=256`;
+  }
+  const i = (parseInt(user.discriminator||"0",10) || ((BigInt(user.id) >> 22n) % 6n)) % 5;
+  return `https://cdn.discordapp.com/embed/avatars/${i}.png`;
+}
+
+function assetURL(appId, id){
+  if (!id) return "";
+  if (id.startsWith("mp:external/")) return "https://" + id.replace(/^mp:external\/[^/]+\/https\//, "");
+  if (id.startsWith("spotify:")) return `https://i.scdn.co/image/${id.replace("spotify:","")}`;
+  return `https://cdn.discordapp.com/app-assets/${appId}/${id}.png`;
+}
+
+function setImg(img, src){
+  img.src = (src && src.length) ? src : FALLBACK_IMG;
+}
+
+function pickActivity(activities){
+  if (!activities || !activities.length) return null;
+  const order = [2,0,1,3,5,4];
+  const sorted = [...activities].sort((a,b)=>{
+    const ai = order.indexOf(a.type); const bi = order.indexOf(b.type);
+    return (ai===-1?99:ai) - (bi===-1?99:bi);
+  });
+  return sorted[0];
+}
+
+function render(data){
+  const user = data.discord_user || {};
+  const name = user.global_name || user.display_name || user.username || "nix";
+  $("displayName").textContent = name;
+  $("username").textContent = "@" + (user.username || "—");
+  setImg($("avatar"), avatarURL(user));
+
+  const badgeHost = $("badges"); badgeHost.innerHTML = "";
+  const addBadge = (t)=>{ const s=document.createElement("span"); s.className="badge"; s.textContent=t; badgeHost.appendChild(s); };
+  if (data.listening_to_spotify) addBadge("spotify");
+  const platform = data.active_on_discord_desktop ? "desktop" : data.active_on_discord_mobile ? "mobile" : data.active_on_discord_web ? "web" : null;
+  if (platform) addBadge(platform);
+
+  setStatus(data.discord_status);
+
+  const act = pickActivity(data.activities || []);
+  clearInterval(currentActivityInterval);
+  if (!act){
+    $("activity").classList.remove("show");
+  } else {
+    const ae = $("activity");
+    ae.classList.add("show");
+    const typeLabel = ({0:"playing",1:"streaming",2:"listening to",3:"watching",4:"",5:"competing in"})[act.type] || "";
+    $("actLabel").textContent = typeLabel;
+
+    if (act.id === "spotify:1" || data.listening_to_spotify){
+      const sp = data.spotify || {};
+      $("actLabel").textContent = "listening to spotify";
+      $("actTitle").textContent = sp.song || act.details || "—";
+      $("actDesc").textContent = "by " + (sp.artist || act.state || "—");
+      setImg($("actLarge"), sp.album_art_url || "");
+      $("actSmallWrap").style.display = "none";
+      if (sp.timestamps && sp.timestamps.start && sp.timestamps.end){
+        setupProgress(sp.timestamps.start, sp.timestamps.end);
+      } else { $("actBar").classList.remove("show"); }
+    } else {
+      $("actTitle").textContent = act.name || "—";
+      const parts = [];
+      if (act.details) parts.push(act.details);
+      if (act.state) parts.push(act.state);
+      $("actDesc").textContent = parts.join(" • ") || "—";
+
+      const assets = act.assets || {};
+      setImg($("actLarge"), assets.large_image ? assetURL(act.application_id, assets.large_image) : "");
+      if (assets.small_image){
+        $("actSmallWrap").style.display = "block";
+        setImg($("actSmall"), assetURL(act.application_id, assets.small_image));
+      } else {
+        $("actSmallWrap").style.display = "none";
+      }
+
+      if (act.timestamps && act.timestamps.start && act.timestamps.end){
+        setupProgress(act.timestamps.start, act.timestamps.end);
+      } else {
+        $("actBar").classList.remove("show");
+      }
+    }
+  }
+}
+
+function setupProgress(start, end){
+  const bar = $("actBar");
+  const fill = $("actBarFill");
+  bar.classList.add("show");
+  const tick = ()=>{
+    const now = Date.now();
+    const pct = Math.max(0, Math.min(100, ((now - start) / (end - start)) * 100));
+    fill.style.width = pct + "%";
+    if (now >= end){ clearInterval(currentActivityInterval); }
+  };
+  tick();
+  currentActivityInterval = setInterval(tick, 500);
+}
+
+fetchOnce();
+connect();
+
+const card = $("card");
+window.addEventListener("pointermove", (e)=>{
+  if (!document.body.classList.contains("entered")) return;
+  const x = (e.clientX / window.innerWidth - .5);
+  const y = (e.clientY / window.innerHeight - .5);
+  card.style.transform = `perspective(900px) rotateY(${x*4}deg) rotateX(${-y*4}deg) translateZ(0)`;
+});
+window.addEventListener("pointerleave", ()=>{ card.style.transform = ""; });
+</script>
+</body>
+</html>
