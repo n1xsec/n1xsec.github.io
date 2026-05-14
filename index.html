@@ -69,10 +69,12 @@
   .enter{
     position:fixed;inset:0;z-index:50;display:grid;place-items:center;
     background:#000;
-    cursor:pointer;
+    cursor:wait;
     transition:opacity .9s ease;
     overflow:hidden;
   }
+  .enter.ready{cursor:pointer}
+  .enter:not(.ready) .glitch{opacity:.45}
   .enter .ghost{
     position:absolute;inset:0;background:url("./23.gif") center/cover no-repeat;
     opacity:.08;filter:grayscale(.4) contrast(.9);
@@ -276,7 +278,7 @@
 <body>
   <div class="starfield"></div>
 
-  <video id="bgvid" src="./23.mp4" playsinline loop preload="auto" muted></video>
+  <video id="bgvid" playsinline loop preload="auto" muted></video>
   <div class="vignette"></div>
 
   <div class="enter" id="enter" role="button" tabindex="0" aria-label="Click to enter">
@@ -361,6 +363,7 @@ bindFallback($("actLarge"));
 bindFallback($("actSmall"));
 
 function enterSite(){
+  if (!videoReady) return;
   if (document.body.classList.contains("entered")) return;
   document.body.classList.add("entered");
   enterEl.classList.add("hide");
@@ -374,7 +377,27 @@ function enterSite(){
 enterEl.addEventListener("click", enterSite);
 enterEl.addEventListener("keydown", (e)=>{ if(e.key === "Enter" || e.key === " ") enterSite(); });
 
-video.addEventListener("loadeddata", ()=>{ video.pause(); });
+let videoReady = false;
+function markReady(){
+  if (videoReady) return;
+  videoReady = true;
+  enterEl.classList.add("ready");
+}
+video.addEventListener("canplaythrough", markReady, { once:true });
+
+(async function prefetchVideo(){
+  try {
+    const res = await fetch("./23.mp4", { cache: "force-cache" });
+    if (!res.ok) throw new Error("fetch failed");
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    video.src = url;
+    video.load();
+  } catch (e) {
+    video.src = "./23.mp4";
+    video.load();
+  }
+})();
 
 const ICON_ON  = '<path d="M3 10v4a1 1 0 0 0 1 1h3l4 4a1 1 0 0 0 1.7-.7V5.7A1 1 0 0 0 11 5L7 9H4a1 1 0 0 0-1 1zm13.5 2a4.5 4.5 0 0 0-2.25-3.9v7.8A4.5 4.5 0 0 0 16.5 12zM14 3.23v2.06a7 7 0 0 1 0 13.42v2.06a9 9 0 0 0 0-17.54z"/>';
 const ICON_OFF = '<path d="M3 10v4a1 1 0 0 0 1 1h3l4 4a1 1 0 0 0 1.7-.7V5.7A1 1 0 0 0 11 5L7 9H4a1 1 0 0 0-1 1zm13.59 2l2.7-2.71a1 1 0 1 0-1.41-1.41L15.17 10.6l-2.71-2.71a1 1 0 1 0-1.41 1.41L13.76 12l-2.71 2.71a1 1 0 1 0 1.41 1.41l2.71-2.71 2.71 2.71a1 1 0 0 0 1.41-1.41L16.58 12z"/>';
